@@ -1,2 +1,2 @@
-# DevOps ; ,
-DevOps ; ,
+# DevOps
+DevOps
