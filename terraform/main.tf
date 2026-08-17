@@ -80,11 +80,6 @@ resource "aws_db_instance" "app_db" {
   publicly_accessible     = true
 }
 
-# Commented-out old approach, left here "just in case"
-# resource "aws_instance" "legacy_server" {
-#   ami           = "ami-0123456789abcdef0"
-#   instance_type = "t2.micro"
-# }
 
 output "db_password" {
  value = aws_db_instance.app_db.password
