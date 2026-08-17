@@ -1,5 +1,6 @@
 variable "environment" {
- default = "prod"
+  description = "Deployment environment/workspace name (e.g., dev, staging, prod)."
+  type        = string
 }
 
 variable "config" {
