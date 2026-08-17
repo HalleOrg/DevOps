@@ -4,6 +4,7 @@ variable "environment" {
 }
 
 variable "config" {
- type    = any
- default = {}
+  description = "Additional configuration overrides for this stack."
+  type        = map(any)
+  default     = {}
 }
