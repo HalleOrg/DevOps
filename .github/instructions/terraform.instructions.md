@@ -1,5 +1,5 @@
 ---
-applyTo: '*/.tf,*/.tfvars'
+applyTo: '**/*.tf,**/*.tfvars'
 ---
 # Terraform Review Standards
  
