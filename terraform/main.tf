@@ -2,8 +2,18 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# NOTE: no required_providers block with a version constraint here.
-# NOTE: no backend block — state is local, shared team infra.
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+# NOTE: backend configuration should be added for shared/team state (e.g., S3 + DynamoDB).
 
 resource "aws_security_group" "web_sg" {
   name        = "web-sg"
