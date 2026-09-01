@@ -74,9 +74,9 @@ jobs:
       - name: Check AWS configuration
         shell: bash
         env:
-          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
         run: |
           if [ -z "$AWS_ROLE_ARN" ]; then
             echo "ERROR: AWS_ROLE_ARN is not configured"
