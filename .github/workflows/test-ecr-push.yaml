@@ -119,8 +119,8 @@ jobs:
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       # ---------------------------------------------------
       # 9. Verify AWS authentication
@@ -166,8 +166,8 @@ jobs:
       # ---------------------------------------------------
       - name: Verify ECR repository
         env:
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           aws ecr describe-repositories \
             --repository-names "$ECR_REPOSITORY" \
@@ -199,7 +199,7 @@ jobs:
       # ---------------------------------------------------
       - name: Tag Docker image for ECR
         env:
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
         run: |
           docker tag \
             devsecops-poc:test \
@@ -213,7 +213,7 @@ jobs:
       # ---------------------------------------------------
       - name: Push Docker image to ECR
         env:
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
         run: |
           docker push \
             "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
@@ -223,8 +223,8 @@ jobs:
       # ---------------------------------------------------
       - name: Verify image in ECR
         env:
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           echo "Available images in ECR:"
 
@@ -242,8 +242,8 @@ jobs:
       # ---------------------------------------------------
       - name: Capture image digest
         env:
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           DIGEST=$(aws ecr describe-images \
             --repository-name "$ECR_REPOSITORY" \
@@ -271,7 +271,7 @@ jobs:
       # ---------------------------------------------------
       - name: Deployment artifact summary
         env:
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
         run: |
           echo "=============================================="
           echo "AWS ECR Deployment Artifact"
