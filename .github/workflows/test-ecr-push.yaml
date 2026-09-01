@@ -65,7 +65,7 @@ jobs:
       # 7. Verify AWS configuration is available
       #
       # These are GitHub VARIABLES, not AWS credentials.
-      #
+      # ...
       # Required GitHub variables:
       # AWS_ROLE_ARN
       # AWS_REGION
