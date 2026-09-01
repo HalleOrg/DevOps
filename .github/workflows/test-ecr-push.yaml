@@ -1,0 +1,311 @@
+# POC check
+name: DevSecOps POC - Docker, AWS OIDC and ECR Push
+
+on:
+  push:
+    branches:
+      - Feature_aws_push
+
+# Required for GitHub OIDC authentication with AWS
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  docker-aws-test:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ---------------------------------------------------
+      # 1. Checkout source code
+      # ---------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------
+      # 2. Build Docker image
+      # ---------------------------------------------------
+      - name: Build Docker image
+        run: |
+          docker build -t devsecops-poc:test .
+
+      # ---------------------------------------------------
+      # 3. Run Docker container
+      # ---------------------------------------------------
+      - name: Run Docker container
+        run: |
+          docker run -d \
+            --name devsecops-poc \
+            -p 8080:8080 \
+            devsecops-poc:test
+
+      # ---------------------------------------------------
+      # 4. Wait for application
+      # ---------------------------------------------------
+      - name: Wait for application
+        run: |
+          sleep 5
+
+      # ---------------------------------------------------
+      # 5. Test application health
+      # ---------------------------------------------------
+      - name: Test health endpoint
+        run: |
+          curl --fail http://localhost:8080/health
+
+      # ---------------------------------------------------
+      # 6. Show Docker container status
+      # ---------------------------------------------------
+      - name: Show Docker container status
+        run: |
+          docker ps
+
+      # ---------------------------------------------------
+      # 7. Verify AWS configuration is available
+      #
+      # These are GitHub VARIABLES, not AWS credentials.
+      #
+      # Required GitHub variables:
+      # AWS_ROLE_ARN
+      # AWS_REGION
+      # ECR_REPOSITORY
+      # ---------------------------------------------------
+      - name: Check AWS configuration
+        shell: bash
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+        run: |
+          if [ -z "$AWS_ROLE_ARN" ]; then
+            echo "ERROR: AWS_ROLE_ARN is not configured"
+            exit 1
+          else
+            echo "AWS_ROLE_ARN is configured"
+          fi
+
+          if [ -z "$AWS_REGION" ]; then
+            echo "ERROR: AWS_REGION is not configured"
+            exit 1
+          else
+            echo "AWS_REGION is configured: $AWS_REGION"
+          fi
+
+          if [ -z "$ECR_REPOSITORY" ]; then
+            echo "ERROR: ECR_REPOSITORY is not configured"
+            exit 1
+          else
+            echo "ECR_REPOSITORY is configured: $ECR_REPOSITORY"
+          fi
+
+      # ---------------------------------------------------
+      # 8. Authenticate GitHub to AWS using OIDC
+      #
+      # NO AWS access key or secret access key is stored
+      # in GitHub.
+      #
+      # GitHub OIDC token
+      #        |
+      #        v
+      # AWS STS
+      #        |
+      #        v
+      # Assume IAM Role
+      #        |
+      #        v
+      # Temporary AWS credentials
+      # ---------------------------------------------------
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # ---------------------------------------------------
+      # 9. Verify AWS authentication
+      #
+      # This confirms which IAM role GitHub assumed.
+      # ---------------------------------------------------
+      - name: Verify AWS authentication
+        run: |
+          echo "AWS OIDC authentication successful"
+
+          aws sts get-caller-identity
+
+      # ---------------------------------------------------
+      # 10. Login Docker to Amazon ECR
+      #
+      # This uses the temporary AWS credentials generated
+      # by the previous OIDC authentication step.
+      # ---------------------------------------------------
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ---------------------------------------------------
+      # 11. Capture ECR registry
+      #
+      # Example:
+      # 123456789012.dkr.ecr.us-east-1.amazonaws.com
+      # ---------------------------------------------------
+      - name: Get ECR registry
+        run: |
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+
+          echo "ECR_REGISTRY=$ECR_REGISTRY" >> "$GITHUB_ENV"
+
+          echo "ECR registry retrieved successfully"
+          echo "Registry: $ECR_REGISTRY"
+
+      # ---------------------------------------------------
+      # 12. Verify ECR repository exists
+      #
+      # Expected repository:
+      # devsecops-poc/sample-app
+      # ---------------------------------------------------
+      - name: Verify ECR repository
+        env:
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          aws ecr describe-repositories \
+            --repository-names "$ECR_REPOSITORY" \
+            --region "$AWS_REGION"
+
+          echo "ECR repository exists: $ECR_REPOSITORY"
+
+      # ---------------------------------------------------
+      # 13. Generate immutable image tag from Git SHA
+      #
+      # Example:
+      # sha-a1b2c3d
+      # ---------------------------------------------------
+      - name: Generate image tag
+        run: |
+          IMAGE_TAG="sha-${GITHUB_SHA::7}"
+
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+          echo "Docker image tag: $IMAGE_TAG"
+
+      # ---------------------------------------------------
+      # 14. Tag Docker image for ECR
+      #
+      # Result:
+      #
+      # 123456789012.dkr.ecr.us-east-1.amazonaws.com/
+      # devsecops-poc/sample-app:sha-a1b2c3d
+      # ---------------------------------------------------
+      - name: Tag Docker image for ECR
+        env:
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+        run: |
+          docker tag \
+            devsecops-poc:test \
+            "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          echo "Docker image tagged:"
+          echo "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+      # ---------------------------------------------------
+      # 15. Push Docker image to Amazon ECR
+      # ---------------------------------------------------
+      - name: Push Docker image to ECR
+        env:
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+        run: |
+          docker push \
+            "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+      # ---------------------------------------------------
+      # 16. Verify image and tags in ECR
+      # ---------------------------------------------------
+      - name: Verify image in ECR
+        env:
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          echo "Available images in ECR:"
+
+          aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --region "$AWS_REGION" \
+            --query 'imageDetails[].{Tags:imageTags,Digest:imageDigest,PushedAt:imagePushedAt}' \
+            --output table
+
+      # ---------------------------------------------------
+      # 17. Capture immutable image digest
+      #
+      # Example:
+      # sha256:abc123...
+      # ---------------------------------------------------
+      - name: Capture image digest
+        env:
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          DIGEST=$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" \
+            --region "$AWS_REGION" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "None" ]; then
+            echo "ERROR: Unable to retrieve image digest"
+            exit 1
+          fi
+
+          echo "=============================================="
+          echo "Image successfully pushed to Amazon ECR"
+          echo "Repository   : ${ECR_REPOSITORY}"
+          echo "Image Tag    : ${IMAGE_TAG}"
+          echo "Image Digest : ${DIGEST}"
+          echo "=============================================="
+
+          echo "IMAGE_DIGEST=$DIGEST" >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------
+      # 18. Final deployment artifact summary
+      # ---------------------------------------------------
+      - name: Deployment artifact summary
+        env:
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+        run: |
+          echo "=============================================="
+          echo "AWS ECR Deployment Artifact"
+          echo "=============================================="
+          echo "Registry    : ${ECR_REGISTRY}"
+          echo "Repository  : ${ECR_REPOSITORY}"
+          echo "Tag         : ${IMAGE_TAG}"
+          echo "Digest      : ${IMAGE_DIGEST}"
+          echo "Commit SHA  : ${GITHUB_SHA}"
+          echo "Full Image  : ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          echo "=============================================="
+
+      # ---------------------------------------------------
+      # 19. Show application logs
+      # ---------------------------------------------------
+      - name: Show application logs
+        if: always()
+        run: |
+          docker logs devsecops-poc || true
+
+      # ---------------------------------------------------
+      # 20. Stop local test container
+      # ---------------------------------------------------
+      - name: Stop Docker container
+        if: always()
+        run: |
+          docker rm -f devsecops-poc || true
+
+      # ---------------------------------------------------
+      # 21. Logout Docker from Amazon ECR
+      # ---------------------------------------------------
+      - name: Logout from Amazon ECR
+        if: always()
+        run: |
+          if [ -n "${ECR_REGISTRY:-}" ]; then
+            docker logout "$ECR_REGISTRY" || true
+          fi
